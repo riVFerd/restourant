@@ -1,55 +1,70 @@
-from math import radians, cos, sin, asin, sqrt
+from selenium import webdriver
+from bs4 import BeautifulSoup
+from time import sleep
+from pymongo import MongoClient
+import certifi
 import requests
 
-url_launches = "https://api.spacexdata.com/v4/launches"
-headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36'}
-data = requests.get(url_launches, headers=headers)
-launches = data.json()
+password = 'test_mongodb'
+cxn_str = f'mongodb+srv://riVFerd:{password}@cluster0.rq9u845.mongodb.net/?retryWrites=true&w=majority'
+client = MongoClient(cxn_str)
+db = client.dbsparta
 
-# dapatkan 10 peluncuran terbaru
-launches = launches[:20]
+driver = webdriver.Chrome('./chromedriver')
+
+url = "https://www.yelp.com/search?cflt=restaurants&find_loc=San+Francisco%2C+CA"
+
+driver.get(url)
+sleep(5)
+driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
+sleep(5)
 
 access_token = 'pk.eyJ1IjoibGluY3hsbiIsImEiOiJjbDluMHppMjIwMTR5NDBtejl3NjNueGdyIn0.DLAhnub2hn2okIq0gwCJEw'
-def distance(lat1, lat2, lon1, lon2):
-    # Modul matematika bermuat fungsi bernama
-    # radian yang mengonversi dari derajat ke radian.
-    lon1 = radians(lon1)
-    lon2 = radians(lon2)
-    lat1 = radians(lat1)
-    lat2 = radians(lat2)
+long = -122.420679
+lat = 37.772537
 
-    # formula Haversine
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+start = 0
 
-    c = 2 * asin(sqrt(a))
+seen = {}
 
-    # Radius bumi dalam kilometer. Gunakan 3956 untuk mil
-    r = 6371
+for _ in range(5):
+    req = driver.page_source
+    soup = BeautifulSoup(req, 'html.parser')
+    restaurants = soup.select('div[class*="arrange-unit__"]')
+    for restaurant in restaurants:
+        business_name = restaurant.select_one('div[class*="businessName__"]')
+        if not business_name:
+            continue
+        name = business_name.text.split('.')[-1].strip()
 
-    # kalkulasikan hasil
-    return (c * r)
+        if name in seen:
+            print('already seen!')
+            continue
 
-for launch in launches:
-    launchpad_id = launch['launchpad']
-    url_launchapd = f'https://api.spacexdata.com/v4/launchpads/{launchpad_id}'
-    data = requests.get(url_launchapd, headers=headers)
-    launchpad = data.json()
+        seen[name] = True
 
-    date = launch['date_utc']
-    full_name = launchpad['full_name']
+        link = business_name.select_one('a').get('href')
+        link = f'https://www.yelp.com{link}'
 
-    lon1 = launchpad['longitude']
-    lat1 = launchpad['latitude']
+        categories_price_location = restaurant.select_one('div[class*="priceCategory__"]')
+        spans = categories_price_location.select('span')
+        categories = spans[0].text
+        location = spans[-1].text
+        geo_url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{location}.json?proximity={long},{lat}&access_token={access_token}"
+        geo_response = requests.get(geo_url)
+        geo_json = geo_response.json()
+        center = geo_json['features'][0]['center']
+        print(name, categories, location, center)
+        doc = {
+            'name': name,
+            'categories': categories,
+            'location': location,
+            'link': link,
+            'center': center,
+        }
+        db.restaurants.insert_one(doc)
+    start += 10
+    driver.get(f'{url}&start={start}')
+    sleep(5)
 
-    geo_url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{full_name}.json?access_token={access_token}"
-    geo_response = requests.get(geo_url)
-    geo_json = geo_response.json()
-    center = geo_json['features'][0]['center']
-    lon2 = center[0]
-    lat2 = center[1]
-
-    dist = distance(lat1, lat2, lon1, lon2)
-
-    print(date, full_name, dist)
+driver.quit()
