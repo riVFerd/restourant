@@ -89,7 +89,7 @@
                 "pk.eyJ1IjoiaXFiYWxtcDk2IiwiYSI6ImNsYWtvdnA4MjAxN24zd3BvN2F5aGVqYm0ifQ.MaGNKKn_z7wTdRzvQmK-rg";
             map = new mapboxgl.Map({
                 container: "map", // container ID
-                center: [-122.420679, 37.772537], // starting position [lng, lat]
+                center: [-122.820679, 37.772537], // starting position [lng, lat]
                 zoom: 13, // starting zoom
                 style: "mapbox://styles/mapbox/streets-v11", // style URL or style object
                 hash: true, // sync `center`, `zoom`, `pitch`, and `bearing` with URL
@@ -111,7 +111,44 @@
             map.addControl(nav, "bottom-right");
 
             get_restaurants();
+
+            const locationForV = makeV([-122.820679, 37.772537])
+
+            locationForV.forEach((location) => {
+                make_marker(location);
+            });
+
+            const locationForF = makeF(locationForV[locationForV.length - 1].center);
+
+            locationForF.forEach((location) => {
+                make_marker(location);
+            });
+
+            // starting point
+            make_marker({center: [-122.820679, 37.772537]});
+            // last marker from V
+            make_marker(locationForV[locationForV.length - 1]);
+
         });
+
+        function makeV(initialLocation) {
+            return Array(21).fill(0).map((location, i) => {
+                if (i <= 10) {
+                    return {center: [initialLocation[0] + (0.0001 * i), initialLocation[1] - (0.0001 * i)]}
+                } else {
+                    return {center: [initialLocation[0] + (0.0001 * i), initialLocation[1] + (0.0001 * (i - 20))]}
+                }
+            });
+        }
+
+        function makeF(initialLocation) {
+            initialLocation[0] = initialLocation[0] + 0.0005; // for spacing
+            let locationForF = [];
+            locationForF = Array(12).fill(0).map((location, i) => ({center: [initialLocation[0], initialLocation[1] - (0.0001 * i)]}));
+            locationForF = [...locationForF, ...Array(8).fill(0).map((location, i) => ({center: [initialLocation[0] + (0.0001 * i), initialLocation[1]]}))];
+            locationForF = [...locationForF, ...Array(8).fill(0).map((location, i) => ({center: [initialLocation[0] + (0.0001 * i), initialLocation[1] - 0.0005]}))];
+            return locationForF;
+        }
 
         function make_card(i, restaurant) {
             let html_temp = `<div class="card" id="card-${i}" onclick="map.flyTo({center: [${restaurant.center}]});">
